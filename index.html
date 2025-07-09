@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini POS Billing App</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and general body styling */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+            display: flex;
+            flex-direction: column; /* Allow stacking of app-container and invoice-preview */
+            justify-content: flex-start; /* Align to start */
+            align-items: center; /* Center horizontally */
+            min-height: 100vh;
+            padding: 20px;
+        }
+        /* Hide print-specific elements when not printing */
+        @media print {
+            body {
+                background-color: #fff; /* White background for print */
+                padding: 0;
+                margin: 0;
+            }
+            #app-container {
+                display: none !important; /* Hide main app completely when printing */
+            }
+            .no-print {
+                display: none !important;
+            }
+            .invoice-preview {
+                display: block !important; /* Ensure invoice preview is visible when printing */
+                box-shadow: none;
+                border-radius: 0;
+                width: 100%;
+                max-width: none;
+                min-height: 100vh; /* Ensure full height for printing */
+                padding: 20px;
+            }
+            .invoice-header, .invoice-details, .invoice-items, .invoice-summary, .invoice-footer {
+                page-break-inside: avoid; /* Prevent breaking these sections across pages */
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <!-- Main App Container -->
+    <div id="app-container" class="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">📦 Mini POS Billing App</h1>
+
+        <!-- Item Input Section -->
+        <div class="mb-8 p-4 bg-blue-50 rounded-lg no-print">
+            <h2 class="text-xl font-semibold text-blue-800 mb-4">Add Item</h2>
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <input type="text" id="itemCode" placeholder="Item Code" class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="itemName" placeholder="Item Name" class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="number" id="itemQuantity" placeholder="Quantity" min="1" value="1" class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="number" id="itemPrice" placeholder="Price" min="0.01" step="0.01" class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="addItemBtn" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Add Item</button>
+            </div>
+            <div id="itemInputError" class="text-red-600 text-sm mt-2 hidden"></div>
+        </div>
+
+        <!-- Item List Table -->
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Items in Cart</h2>
+            <div class="overflow-x-auto rounded-lg shadow-sm border border-gray-200">
+                <table class="min-w-full bg-white">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                            <th class="py-3 px-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Subtotal</th>
+                            <th class="py-3 px-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider no-print">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemList" class="divide-y divide-gray-200">
+                        <!-- Items will be dynamically added here -->
+                        <tr>
+                            <td colspan="6" class="py-4 px-4 text-center text-gray-500" id="noItemsMessage">No items added yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Summary Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 no-print">
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Billing Details</h2>
+                <div class="flex items-center justify-between mb-3">
+                    <label for="discount" class="text-gray-700">Discount (%):</label>
+                    <input type="number" id="discount" value="0" min="0" max="100" class="w-24 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-right">
+                </div>
+                <div class="flex items-center justify-between mb-3">
+                    <label for="tax" class="text-gray-700">Tax (%):</label>
+                    <input type="number" id="tax" value="0" min="0" class="w-24 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-right">
+                </div>
+            </div>
+
+            <div class="p-4 bg-blue-50 rounded-lg shadow-sm">
+                <h2 class="text-xl font-semibold text-blue-800 mb-4">Summary</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-gray-700">Subtotal:</span>
+                    <span id="subtotalDisplay" class="font-medium text-gray-900">₹0.00</span>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-gray-700">Discount Amount:</span>
+                    <span id="discountAmountDisplay" class="font-medium text-gray-900">₹0.00</span>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-gray-700">Tax Amount:</span>
+                    <span id="taxAmountDisplay" class="font-medium text-gray-900">₹0.00</span>
+                </div>
+                <div class="flex justify-between items-center pt-3 border-t border-gray-200 mt-3">
+                    <span class="text-lg font-bold text-blue-800">Total:</span>
+                    <span id="totalDisplay" class="text-lg font-bold text-blue-800">₹0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-center gap-4 mb-8 no-print">
+            <button id="generateInvoiceBtn" class="bg-green-600 text-white p-3 rounded-md hover:bg-green-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">Generate Invoice Preview</button>
+            <button id="resetAppBtn" class="bg-red-600 text-white p-3 rounded-md hover:bg-red-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">Reset App</button>
+        </div>
+    </div>
+
+    <!-- Invoice Preview Section (moved outside app-container) -->
+    <div id="invoicePreview" class="invoice-preview hidden bg-white p-8 rounded-lg shadow-lg border border-gray-200 w-full max-w-4xl mt-4">
+        <div class="invoice-header text-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">Invoice</h2>
+            <p class="text-sm text-gray-600">Date: <span id="invoiceDate"></span></p>
+            <p class="text-sm text-gray-600">Invoice No: <span id="invoiceNumber"></span></p>
+        </div>
+
+        <div class="invoice-details mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Bill To:</h3>
+            <p class="text-gray-700">Customer Name: <span id="customerName">Walk-in Customer</span></p>
+            <p class="text-gray-700">Address: <span id="customerAddress">N/A</span></p>
+        </div>
+
+        <div class="invoice-items mb-6">
+            <table class="min-w-full bg-white border border-gray-300">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="py-2 px-4 text-left text-sm font-medium text-gray-600 uppercase border-b">Code</th>
+                        <th class="py-2 px-4 text-left text-sm font-medium text-gray-600 uppercase border-b">Item</th>
+                        <th class="py-2 px-4 text-left text-sm font-medium text-gray-600 uppercase border-b">Qty</th>
+                        <th class="py-2 px-4 text-right text-sm font-medium text-gray-600 uppercase border-b">Price</th>
+                        <th class="py-2 px-4 text-right text-sm font-medium text-gray-600 uppercase border-b">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody id="invoiceItemList" class="divide-y divide-gray-200">
+                    <!-- Invoice items will be added here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-summary text-right mb-6">
+            <div class="flex justify-end items-center mb-1">
+                <span class="text-gray-700 mr-2">Subtotal:</span>
+                <span id="invoiceSubtotal" class="font-medium text-gray-900 w-24 text-right">₹0.00</span>
+            </div>
+            <div class="flex justify-end items-center mb-1">
+                <span class="text-gray-700 mr-2">Discount (<span id="invoiceDiscountPercent">0</span>%):</span>
+                <span id="invoiceDiscountAmount" class="font-medium text-gray-900 w-24 text-right">₹0.00</span>
+            </div>
+            <div class="flex justify-end items-center mb-1">
+                <span class="text-gray-700 mr-2">Tax (<span id="invoiceTaxPercent">0</span>%):</span>
+                <span id="invoiceTaxAmount" class="font-medium text-gray-900 w-24 text-right">₹0.00</span>
+            </div>
+            <div class="flex justify-end items-center pt-3 border-t border-gray-300 mt-3">
+                <span class="text-xl font-bold text-blue-800 mr-2">Total:</span>
+                <span id="invoiceTotal" class="text-xl font-bold text-blue-800 w-24 text-right">₹0.00</span>
+            </div>
+        </div>
+
+        <div class="invoice-footer text-center text-sm text-gray-500">
+            <p>Thank you for your business!</p>
+            <p>Generated by Mini POS Billing App</p>
+        </div>
+
+        <div class="flex justify-center mt-6 no-print">
+            <button id="downloadReceiptBtn" class="bg-purple-600 text-white p-3 rounded-md hover:bg-purple-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2">Print/Download Receipt</button>
+        </div>
+    </div>
+
+    <script>
+        // Array to store items added to the cart
+        let cartItems = [];
+
+        // Get DOM elements
+        const itemCodeInput = document.getElementById('itemCode');
+        const itemNameInput = document.getElementById('itemName');
+        const itemQuantityInput = document.getElementById('itemQuantity');
+        const itemPriceInput = document.getElementById('itemPrice');
+        const addItemBtn = document.getElementById('addItemBtn');
+        const itemListBody = document.getElementById('itemList');
+        const noItemsMessage = document.getElementById('noItemsMessage');
+        const discountInput = document.getElementById('discount');
+        const taxInput = document.getElementById('tax');
+        const subtotalDisplay = document.getElementById('subtotalDisplay');
+        const discountAmountDisplay = document.getElementById('discountAmountDisplay');
+        const taxAmountDisplay = document.getElementById('taxAmountDisplay');
+        const totalDisplay = document.getElementById('totalDisplay');
+        const generateInvoiceBtn = document.getElementById('generateInvoiceBtn');
+        const resetAppBtn = document.getElementById('resetAppBtn');
+        const appContainer = document.getElementById('app-container'); // Get the main app container
+        const invoicePreview = document.getElementById('invoicePreview');
+        const invoiceDateSpan = document.getElementById('invoiceDate');
+        const invoiceNumberSpan = document.getElementById('invoiceNumber');
+        const invoiceItemListBody = document.getElementById('invoiceItemList');
+        const invoiceSubtotalSpan = document.getElementById('invoiceSubtotal');
+        const invoiceDiscountPercentSpan = document.getElementById('invoiceDiscountPercent');
+        const invoiceDiscountAmountSpan = document.getElementById('invoiceDiscountAmount');
+        const invoiceTaxPercentSpan = document.getElementById('invoiceTaxPercent');
+        const invoiceTaxAmountSpan = document.getElementById('invoiceTaxAmount');
+        const invoiceTotalSpan = document.getElementById('invoiceTotal');
+        const downloadReceiptBtn = document.getElementById('downloadReceiptBtn');
+        const itemInputError = document.getElementById('itemInputError');
+
+        /**
+         * Generates a unique invoice number.
+         * Format: INV-YYYYMMDD-HHMMSS-RANDOM
+         * @returns {string} The generated invoice number.
+         */
+        function generateInvoiceNumber() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            return `INV-${year}${month}${day}-${hours}${minutes}${seconds}-${random}`;
+        }
+
+        /**
+         * Calculates the subtotal for a single item.
+         * @param {number} quantity - The quantity of the item.
+         * @param {number} price - The price per unit of the item.
+         * @returns {number} The calculated subtotal.
+         */
+        function calculateItemSubtotal(quantity, price) {
+            return quantity * price;
+        }
+
+        /**
+         * Renders the items in the cart to the table.
+         */
+        function renderItemList() {
+            itemListBody.innerHTML = ''; // Clear existing items
+
+            if (cartItems.length === 0) {
+                noItemsMessage.classList.remove('hidden');
+            } else {
+                noItemsMessage.classList.add('hidden');
+                cartItems.forEach((item, index) => {
+                    const row = itemListBody.insertRow();
+                    row.classList.add('hover:bg-gray-50'); // Add hover effect
+
+                    row.innerHTML = `
+                        <td class="py-3 px-4 whitespace-nowrap text-sm text-gray-900">${item.code}</td>
+                        <td class="py-3 px-4 whitespace-nowrap text-sm text-gray-900">${item.name}</td>
+                        <td class="py-3 px-4 whitespace-nowrap text-sm text-gray-900">${item.quantity}</td>
+                        <td class="py-3 px-4 whitespace-nowrap text-sm text-gray-900">₹${item.price.toFixed(2)}</td>
+                        <td class="py-3 px-4 whitespace-nowrap text-sm text-gray-900 text-right">₹${item.subtotal.toFixed(2)}</td>
+                        <td class="py-3 px-4 whitespace-nowrap text-right text-sm font-medium no-print">
+                            <button data-index="${index}" class="remove-item-btn text-red-600 hover:text-red-900 transition duration-200 ease-in-out">Remove</button>
+                        </td>
+                    `;
+                });
+            }
+            calculateTotals(); // Recalculate totals after rendering
+        }
+
+        /**
+         * Calculates and updates the subtotal, discount, tax, and total displays.
+         */
+        function calculateTotals() {
+            let subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
+            const discountPercent = parseFloat(discountInput.value) || 0;
+            const taxPercent = parseFloat(taxInput.value) || 0;
+
+            let discountAmount = (subtotal * discountPercent) / 100;
+            let totalAfterDiscount = subtotal - discountAmount;
+            let taxAmount = (totalAfterDiscount * taxPercent) / 100;
+            let finalTotal = totalAfterDiscount + taxAmount;
+
+            subtotalDisplay.textContent = `₹${finalTotal.toFixed(2)}`; // Display total as subtotal in main view
+            discountAmountDisplay.textContent = `₹${discountAmount.toFixed(2)}`;
+            taxAmountDisplay.textContent = `₹${taxAmount.toFixed(2)}`;
+            totalDisplay.textContent = `₹${finalTotal.toFixed(2)}`;
+        }
+
+        /**
+         * Adds an item to the cart.
+         */
+        addItemBtn.addEventListener('click', () => {
+            const code = itemCodeInput.value.trim();
+            const name = itemNameInput.value.trim();
+            const quantity = parseInt(itemQuantityInput.value);
+            const price = parseFloat(itemPriceInput.value);
+
+            // Basic validation
+            if (!code || !name || isNaN(quantity) || quantity <= 0 || isNaN(price) || price <= 0) {
+                itemInputError.textContent = 'Please fill in all item fields with valid positive numbers for quantity and price.';
+                itemInputError.classList.remove('hidden');
+                return;
+            } else {
+                itemInputError.classList.add('hidden');
+            }
+
+            const subtotal = calculateItemSubtotal(quantity, price);
+
+            cartItems.push({ code, name, quantity, price, subtotal });
+            renderItemList();
+
+            // Clear input fields
+            itemCodeInput.value = '';
+            itemNameInput.value = '';
+            itemQuantityInput.value = '1';
+            itemPriceInput.value = '';
+            itemCodeInput.focus(); // Keep focus on item code for quick entry
+        });
+
+        // Event listener for removing items
+        itemListBody.addEventListener('click', (event) => {
+            if (event.target.classList.contains('remove-item-btn')) {
+                const index = parseInt(event.target.dataset.index);
+                if (!isNaN(index) && index >= 0 && index < cartItems.length) {
+                    cartItems.splice(index, 1); // Remove item from array
+                    renderItemList(); // Re-render the list
+                }
+            }
+        });
+
+        // Event listeners for discount and tax input changes
+        discountInput.addEventListener('input', calculateTotals);
+        taxInput.addEventListener('input', calculateTotals);
+
+        /**
+         * Generates and displays the invoice preview.
+         */
+        generateInvoiceBtn.addEventListener('click', () => {
+            if (cartItems.length === 0) {
+                // Use a custom message box instead of alert
+                showMessageBox('No items to generate an invoice. Please add items to the cart first.');
+                return;
+            }
+
+            // Hide the main app container and show the invoice preview
+            appContainer.classList.add('hidden');
+            invoicePreview.classList.remove('hidden');
+            invoicePreview.style.display = 'block'; // Ensure it's explicitly displayed
+
+            // Populate invoice details
+            invoiceDateSpan.textContent = new Date().toLocaleDateString();
+            invoiceNumberSpan.textContent = generateInvoiceNumber();
+
+            // Populate invoice item list
+            invoiceItemListBody.innerHTML = '';
+            cartItems.forEach(item => {
+                const row = invoiceItemListBody.insertRow();
+                row.innerHTML = `
+                    <td class="py-2 px-4 text-sm text-gray-900">${item.code}</td>
+                    <td class="py-2 px-4 text-sm text-gray-900">${item.name}</td>
+                    <td class="py-2 px-4 text-sm text-gray-900">${item.quantity}</td>
+                    <td class="py-2 px-4 text-right text-sm text-gray-900">₹${item.price.toFixed(2)}</td>
+                    <td class="py-2 px-4 text-right text-sm text-gray-900">₹${item.subtotal.toFixed(2)}</td>
+                `;
+            });
+
+            // Populate invoice summary
+            let subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
+            const discountPercent = parseFloat(discountInput.value) || 0;
+            const taxPercent = parseFloat(taxInput.value) || 0;
+
+            let discountAmount = (subtotal * discountPercent) / 100;
+            let totalAfterDiscount = subtotal - discountAmount;
+            let taxAmount = (totalAfterDiscount * taxPercent) / 100;
+            let finalTotal = totalAfterDiscount + taxAmount;
+
+            invoiceSubtotalSpan.textContent = `₹${subtotal.toFixed(2)}`;
+            invoiceDiscountPercentSpan.textContent = discountPercent.toFixed(0);
+            invoiceDiscountAmountSpan.textContent = `₹${discountAmount.toFixed(2)}`;
+            invoiceTaxPercentSpan.textContent = taxPercent.toFixed(0);
+            invoiceTaxAmountSpan.textContent = `₹${taxAmount.toFixed(2)}`;
+            invoiceTotalSpan.textContent = `₹${finalTotal.toFixed(2)}`;
+        });
+
+        /**
+         * Handles printing/downloading the receipt.
+         * This uses the browser's print functionality.
+         */
+        downloadReceiptBtn.addEventListener('click', () => {
+            window.print();
+        });
+
+        /**
+         * Resets the application to its initial state.
+         */
+        resetAppBtn.addEventListener('click', () => {
+            cartItems = [];
+            itemCodeInput.value = '';
+            itemNameInput.value = '';
+            itemQuantityInput.value = '1';
+            itemPriceInput.value = '';
+            discountInput.value = '0';
+            taxInput.value = '0';
+            itemInputError.classList.add('hidden');
+            renderItemList(); // Re-render to show "No items added yet."
+            calculateTotals(); // Reset totals display
+
+            // Hide invoice preview and show main app container
+            invoicePreview.classList.add('hidden');
+            invoicePreview.style.display = 'none'; // Ensure it's hidden
+            appContainer.classList.remove('hidden');
+        });
+
+        /**
+         * Displays a custom message box.
+         * @param {string} message - The message to display.
+         */
+        function showMessageBox(message) {
+            // Create a simple modal/message box
+            const messageBox = document.createElement('div');
+            messageBox.id = 'customMessageBox';
+            messageBox.className = 'fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50';
+            messageBox.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+                    <p class="text-lg font-semibold mb-4">${message}</p>
+                    <button id="closeMessageBoxBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition duration-200">OK</button>
+                </div>
+            `;
+            document.body.appendChild(messageBox);
+
+            document.getElementById('closeMessageBoxBtn').addEventListener('click', () => {
+                document.body.removeChild(messageBox);
+            });
+        }
+
+        // Initial render when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            renderItemList();
+            calculateTotals();
+        });
+    </script>
+</body>
+</html>
